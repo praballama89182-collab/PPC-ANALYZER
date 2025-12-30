@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import io
-import plotly.express as px
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -17,7 +16,6 @@ st.markdown("""
     .main { background-color: #f8f9fa; }
     .stMetric { background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     h1, h2, h3 { color: #232f3e; }
-    .highlight { background-color: #e8f5e9; padding: 10px; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -263,7 +261,7 @@ if uploaded_file:
                 st.dataframe(df_cpc.style.background_gradient(subset=['CPC'], cmap='Reds').format({'CPC': '{:.2f}', 'ROAS': '{:.2f}'}), use_container_width=True)
 
             # ---------------------------
-            # TAB 4: BEST DAYS (Day Parting)
+            # TAB 4: BEST DAYS (NO PLOTLY)
             # ---------------------------
             with tabs[3]:
                 st.subheader("📅 Day of Week Performance")
@@ -275,12 +273,9 @@ if uploaded_file:
                     day_agg['ROAS'] = day_agg[col_map['sales']] / day_agg[col_map['spend']]
                     day_agg['ACOS'] = day_agg[col_map['spend']] / day_agg[col_map['sales']]
                     
-                    c1, c2 = st.columns([1, 2])
-                    with c1:
-                        st.dataframe(day_agg[['ROAS', 'ACOS']].style.highlight_max(subset=['ROAS'], color='#d4edda').highlight_min(subset=['ACOS'], color='#d4edda'), use_container_width=True)
-                    with c2:
-                        fig = px.bar(day_agg, x=day_agg.index, y='ROAS', title="ROAS by Day", color='ROAS', color_continuous_scale='Greens')
-                        st.plotly_chart(fig, use_container_width=True)
+                    # USE STREAMLIT NATIVE CHART (NO PLOTLY)
+                    st.bar_chart(day_agg['ROAS'])
+                    st.caption("Bar chart showing ROAS by day of the week.")
                         
                     st.caption("Tip: If ROAS is consistently low on weekends, consider using Day Parting software or automated rules to lower bids on Sat/Sun.")
                 else:
