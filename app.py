@@ -191,7 +191,11 @@ if uploaded_file:
                             })
                     
                     df_cannibal = pd.DataFrame(cannibal_results)
-                    st.dataframe(df_cannibal.style.apply(lambda x: ['background-color: #ffebee' if 'NEGATE' in v else '' for v in x], subset=['Action']), use_container_width=True)
+                    # Simplified styling (No Matplotlib)
+                    st.dataframe(
+                        df_cannibal.style.apply(lambda x: ['background-color: #ffebee' if 'NEGATE' in str(v) else '' for v in x], axis=1), 
+                        use_container_width=True
+                    )
                 else:
                     st.success("No cannibalization found.")
                     df_cannibal = pd.DataFrame()
@@ -227,7 +231,7 @@ if uploaded_file:
                     df_harvest = pd.DataFrame()
 
             # ---------------------------
-            # TAB 3: CPC ANALYZER (Top 50)
+            # TAB 3: CPC ANALYZER (Fixed: No Matplotlib)
             # ---------------------------
             with tabs[2]:
                 st.subheader(f"Top {top_n_terms} Search Terms: CPC & Performance Variance")
@@ -257,8 +261,16 @@ if uploaded_file:
                 
                 df_cpc = pd.DataFrame(cpc_results)
                 
-                # Visual Heatmap
-                st.dataframe(df_cpc.style.background_gradient(subset=['CPC'], cmap='Reds').format({'CPC': '{:.2f}', 'ROAS': '{:.2f}'}), use_container_width=True)
+                # Manual Highlighting without Matplotlib
+                def highlight_high_cpc(row):
+                    if 'Lower Bid' in row['Rec']:
+                        return ['color: red; font-weight: bold'] * len(row)
+                    return [''] * len(row)
+
+                st.dataframe(
+                    df_cpc.style.apply(highlight_high_cpc, axis=1).format({'CPC': '{:.2f}', 'ROAS': '{:.2f}'}), 
+                    use_container_width=True
+                )
 
             # ---------------------------
             # TAB 4: BEST DAYS (NO PLOTLY)
@@ -271,15 +283,12 @@ if uploaded_file:
                     }).reindex(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
                     
                     day_agg['ROAS'] = day_agg[col_map['sales']] / day_agg[col_map['spend']]
-                    day_agg['ACOS'] = day_agg[col_map['spend']] / day_agg[col_map['sales']]
                     
-                    # USE STREAMLIT NATIVE CHART (NO PLOTLY)
+                    # USE STREAMLIT NATIVE CHART
                     st.bar_chart(day_agg['ROAS'])
                     st.caption("Bar chart showing ROAS by day of the week.")
-                        
-                    st.caption("Tip: If ROAS is consistently low on weekends, consider using Day Parting software or automated rules to lower bids on Sat/Sun.")
                 else:
-                    st.warning("No 'Date' column found in the report to analyze Day Parting.")
+                    st.warning("No 'Date' column found in the report.")
                     day_agg = pd.DataFrame()
 
             # ---------------------------
