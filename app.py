@@ -4,7 +4,7 @@ import io
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Prabal Ecommerce Analyzer",
+    page_title="Ecommerce Analyzer",
     page_icon="🛒",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -38,7 +38,7 @@ def determine_winner(group, improvement_thresh, min_orders):
     roas_leader = group.loc[max_roas_idx]
     
     if max_sales_idx == max_roas_idx:
-        return max_sales_idx, "🏆 Best Sales & ROAS"
+        return max_sales_idx, "Best Sales & ROAS"
     
     roas_sales = sales_leader['calculated_roas']
     roas_challenger = roas_leader['calculated_roas']
@@ -46,9 +46,9 @@ def determine_winner(group, improvement_thresh, min_orders):
     improvement = (roas_challenger - roas_sales) / roas_sales if roas_sales > 0 else 999
     
     if (improvement >= (improvement_thresh / 100.0)) and (roas_leader['orders_val'] >= min_orders):
-        return max_roas_idx, f"💎 Efficient Choice (ROAS +{improvement:.0%})"
+        return max_roas_idx, f"Efficient (ROAS +{improvement:.0%})"
     else:
-        return max_sales_idx, "📦 Volume Leader"
+        return max_sales_idx, "Volume Leader"
 
 def to_excel(dfs):
     output = io.BytesIO()
@@ -73,7 +73,7 @@ def main():
         # Initialize DataFrame container
         df = None
         
-        # 2. Portfolio Filter (Only appears after upload)
+        # 2. Portfolio Filter
         if uploaded_file:
             try:
                 # Load Data
@@ -92,11 +92,10 @@ def main():
                     all_portfolios = df_raw[port_col].dropna().unique().tolist()
                     selected_ports = st.multiselect("Select Portfolios", options=all_portfolios, default=all_portfolios)
                     
-                    # Filter the dataframe based on selection
                     if selected_ports:
                         df = df_raw[df_raw[port_col].isin(selected_ports)].copy()
                     else:
-                        df = df_raw.copy() # If nothing selected, show all (or none, depending on preference. Here keeping all is safer)
+                        df = df_raw.copy()
                 else:
                     df = df_raw.copy()
                     st.info("No 'Portfolio' column found. Showing all data.")
@@ -179,9 +178,9 @@ def main():
                 df_agg['CPC'] = df_agg.apply(lambda x: x['Spend']/x['Clicks'] if x['Clicks'] > 0 else 0, axis=1)
                 df_agg['ACOS'] = df_agg.apply(lambda x: (x['Spend']/x['Sales'])*100 if x['Sales'] > 0 else 0, axis=1)
 
-                # Rounding for Display
+                # Global Rounding to 1 Decimal
                 for col in ['Spend', 'Sales', 'ROAS', 'CPC', 'ACOS']:
-                    df_agg[col] = df_agg[col].round(2)
+                    df_agg[col] = df_agg[col].round(1)
 
                 # --- KNOWLEDGE BASE ---
                 existing_exact = set(df_agg[df_agg['norm_match'] == 'EXACT']['Search Term'].str.lower().unique())
@@ -191,20 +190,20 @@ def main():
                 st.markdown(f"**Analyzing File:** `{uploaded_file.name}`")
                 
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Total Spend", f"₹{df_agg['Spend'].sum():,.2f}")
-                c2.metric("Total Sales", f"₹{df_agg['Sales'].sum():,.2f}")
+                c1.metric("Total Spend", f"₹{df_agg['Spend'].sum():,.1f}")
+                c2.metric("Total Sales", f"₹{df_agg['Sales'].sum():,.1f}")
                 
                 total_spend = df_agg['Spend'].sum()
                 total_sales = df_agg['Sales'].sum()
                 account_roas = total_sales / total_spend if total_spend > 0 else 0
-                c3.metric("Account ROAS", f"{account_roas:.2f}")
+                c3.metric("Account ROAS", f"{account_roas:.1f}")
                 c4.metric("Unique Search Terms", f"{df_agg['Search Term'].nunique():,}")
 
                 # --- TABS ---
                 tabs = st.tabs(["⚔️ Cannibalization", "🌾 Harvesting", "💰 CPC Analyzer", "📅 Best Days", "💸 Wasted Spend"])
 
                 # ---------------------------
-                # TAB 1: CANNIBALIZATION
+                # TAB 1: CANNIBALIZATION (Updated)
                 # ---------------------------
                 with tabs[0]:
                     st.subheader("Detect & Fix Self-Competition")
@@ -213,14 +212,13 @@ def main():
                     dupe_counts = sales_df.groupby('Search Term').size()
                     cannibal_list = dupe_counts[dupe_counts > 1].index.tolist()
                     
-                    # Explicit Metric for User
                     st.info(f"**Common Search Terms Found:** {len(cannibal_list)} (Terms appearing in >1 Ad Group with Sales)")
 
                     cannibal_results = []
                     if cannibal_list:
                         for term in cannibal_list:
                             subset = sales_df[sales_df['Search Term'] == term].rename(columns={'Sales': 'sales_val', 'Spend': 'spend_val', 'ROAS': 'calculated_roas', 'Orders': 'orders_val'}).copy()
-                            win_idx, reason = determine_winner(subset, roas_threshold, min_orders_cannibal)
+                            win_idx, _ = determine_winner(subset, roas_threshold, min_orders_cannibal) # Reason ignored
                             
                             for idx, row in subset.iterrows():
                                 is_winner = (idx == win_idx)
@@ -228,19 +226,18 @@ def main():
                                     'Search Term': term, 
                                     'Campaign': row['Campaign'], 
                                     'Ad Group': row['Ad Group'],
-                                    'Match': row['norm_match'], 
+                                    'CPC': row['CPC'],  # Replaced Match with CPC
                                     'Spend': row['spend_val'], 
                                     'Sales': row['sales_val'], 
                                     'Orders': row['orders_val'],
                                     'ROAS': row['calculated_roas'], 
-                                    'Action': "✅ KEEP" if is_winner else "⛔ NEGATE",
-                                    'Reason': reason if is_winner else "Lower Efficiency/Vol"
+                                    'Action': "✅ KEEP" if is_winner else "⛔ NEGATE"
                                 })
                         
                         df_cannibal = pd.DataFrame(cannibal_results)
-                        # Rounding
-                        for c in ['Spend', 'Sales', 'ROAS']:
-                            df_cannibal[c] = df_cannibal[c].round(2)
+                        # Ensure rounding on result DF
+                        for c in ['Spend', 'Sales', 'ROAS', 'CPC']:
+                            df_cannibal[c] = df_cannibal[c].round(1)
                             
                         st.dataframe(
                             df_cannibal.style.apply(lambda x: ['background-color: #ffebee' if 'NEGATE' in str(v) else '' for v in x], axis=1), 
@@ -275,6 +272,8 @@ def main():
                     
                     df_harvest = pd.DataFrame(harvest_results)
                     if not df_harvest.empty:
+                        for c in ['Sales', 'ROAS', 'CPC']:
+                             df_harvest[c] = df_harvest[c].round(1)
                         st.dataframe(df_harvest.sort_values(by='Sales', ascending=False), use_container_width=True)
                     else:
                         st.info("No terms met the strict harvesting criteria.")
@@ -308,6 +307,8 @@ def main():
                             })
                     
                     df_cpc = pd.DataFrame(cpc_results)
+                    for c in ['Spend', 'Sales', 'CPC', 'ROAS']:
+                        df_cpc[c] = df_cpc[c].round(1)
                     
                     def highlight_high_cpc(row):
                         if 'High CPC' in row['Rec'] or 'Low ROAS' in row['Rec']:
@@ -315,12 +316,12 @@ def main():
                         return [''] * len(row)
 
                     st.dataframe(
-                        df_cpc.style.apply(highlight_high_cpc, axis=1).format({'CPC': '{:.2f}', 'ROAS': '{:.2f}', 'Spend': '{:.2f}', 'Sales': '{:.2f}'}), 
+                        df_cpc.style.apply(highlight_high_cpc, axis=1).format({'CPC': '{:.1f}', 'ROAS': '{:.1f}', 'Spend': '{:.1f}', 'Sales': '{:.1f}'}), 
                         use_container_width=True
                     )
 
                 # ---------------------------
-                # TAB 4: BEST DAYS (UPDATED)
+                # TAB 4: BEST DAYS
                 # ---------------------------
                 with tabs[3]:
                     st.subheader("📅 Day Parting Performance")
@@ -329,21 +330,18 @@ def main():
                             col_map['spend']: 'sum', col_map['sales']: 'sum', col_map['orders']: 'sum'
                         }).reindex(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
                         
-                        # Calculate Metrics for Table
                         day_agg['ROAS'] = day_agg.apply(lambda x: x[col_map['sales']]/x[col_map['spend']] if x[col_map['spend']]>0 else 0, axis=1)
                         day_agg['ACOS'] = day_agg.apply(lambda x: (x[col_map['spend']]/x[col_map['sales']])*100 if x[col_map['sales']]>0 else 0, axis=1)
                         
-                        # Rename for display
                         day_display = day_agg.rename(columns={
                             col_map['spend']: 'Spend',
                             col_map['sales']: 'Sales',
                             col_map['orders']: 'Orders'
                         })
                         
-                        # Rounding
-                        day_display = day_display.round(2)
+                        for c in ['Spend', 'Sales', 'ROAS', 'ACOS']:
+                            day_display[c] = day_display[c].round(1)
 
-                        # Charts
                         c1, c2 = st.columns(2)
                         with c1:
                             st.markdown("##### 📉 Spend Trend")
@@ -352,9 +350,8 @@ def main():
                             st.markdown("##### 📦 Order Volume")
                             st.bar_chart(day_display['Orders'], color="#00C0F2")
                         
-                        # Table with ROAS & ACOS
                         st.markdown("##### Daily Performance Breakdown")
-                        st.dataframe(day_display[['Spend', 'Sales', 'Orders', 'ROAS', 'ACOS']].style.format("{:.2f}"), use_container_width=True)
+                        st.dataframe(day_display[['Spend', 'Sales', 'Orders', 'ROAS', 'ACOS']].style.format("{:.1f}"), use_container_width=True)
                     else:
                         st.warning("No 'Date' column found.")
                         day_agg = pd.DataFrame()
@@ -368,8 +365,11 @@ def main():
                     
                     df_waste = df_agg[(df_agg['Orders'] == 0) & (df_agg['Spend'] >= waste_threshold)].sort_values(by='Spend', ascending=False)
                     
+                    for c in ['Spend', 'CPC', 'ACOS']:
+                        df_waste[c] = df_waste[c].round(1)
+
                     st.dataframe(
-                        df_waste[['Search Term', 'Campaign', 'Ad Group', 'Spend', 'Orders', 'ACOS', 'Clicks', 'CPC']].style.format({'Spend': '{:.2f}', 'CPC': '{:.2f}', 'ACOS': '{:.2f}'}), 
+                        df_waste[['Search Term', 'Campaign', 'Ad Group', 'Spend', 'Orders', 'ACOS', 'Clicks', 'CPC']].style.format({'Spend': '{:.1f}', 'CPC': '{:.1f}', 'ACOS': '{:.1f}'}), 
                         use_container_width=True
                     )
 
