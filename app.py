@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import io
 
-# --- PAGE CONFIGURATION ---
+# --- PAGE CONFIGURATION (Must be first) ---
 st.set_page_config(
-    page_title="Amazon PPC Command Center",
-    page_icon="🚀",
+    page_title="Prabal Ecommerce Analyzer",
+    page_icon="🛒",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -15,13 +15,14 @@ st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
     .stMetric { background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    h1, h2, h3 { color: #232f3e; }
+    h1, h2, h3 { color: #232f3e; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+    .css-1d391kg { padding-top: 1rem; } /* Reduce top padding */
     </style>
     """, unsafe_allow_html=True)
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.title("🚀 PPC Command Center")
+    st.title("🛒 Prabal Ecommerce Analyzer")
     st.markdown("---")
     
     # File Upload
@@ -82,7 +83,7 @@ def to_excel(dfs):
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         for sheet_name, df in dfs.items():
             if not df.empty:
-                df.to_excel(writer, sheet_name=sheet_name[:31], index=False) # Excel limits sheet names to 31 chars
+                df.to_excel(writer, sheet_name=sheet_name[:31], index=False) 
     return output.getvalue()
 
 # --- MAIN LOGIC ---
@@ -149,12 +150,15 @@ if uploaded_file:
             
             df_agg['ROAS'] = df_agg.apply(lambda x: x['Sales']/x['Spend'] if x['Spend'] > 0 else 0, axis=1)
             df_agg['CPC'] = df_agg.apply(lambda x: x['Spend']/x['Clicks'] if x['Clicks'] > 0 else 0, axis=1)
+            df_agg['ACOS'] = df_agg.apply(lambda x: (x['Spend']/x['Sales'])*100 if x['Sales'] > 0 else 0, axis=1)
 
             # --- BUILD KNOWLEDGE BASE (Existing Targets) ---
             existing_exact = set(df_agg[df_agg['norm_match'] == 'EXACT']['Search Term'].str.lower().unique())
 
             # --- HEADER METRICS ---
-            st.markdown(f"### 📊 Analysis Report: {uploaded_file.name}")
+            st.title("Prabal Ecommerce Analyzer")
+            st.markdown(f"**Analyzing File:** `{uploaded_file.name}`")
+            
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Total Spend", f"₹{df_agg['Spend'].sum():,.0f}")
             c2.metric("Total Sales", f"₹{df_agg['Sales'].sum():,.0f}")
@@ -191,7 +195,6 @@ if uploaded_file:
                             })
                     
                     df_cannibal = pd.DataFrame(cannibal_results)
-                    # Simplified styling (No Matplotlib)
                     st.dataframe(
                         df_cannibal.style.apply(lambda x: ['background-color: #ffebee' if 'NEGATE' in str(v) else '' for v in x], axis=1), 
                         use_container_width=True
@@ -231,13 +234,12 @@ if uploaded_file:
                     df_harvest = pd.DataFrame()
 
             # ---------------------------
-            # TAB 3: CPC ANALYZER (Fixed: No Matplotlib)
+            # TAB 3: CPC ANALYZER
             # ---------------------------
             with tabs[2]:
                 st.subheader(f"Top {top_n_terms} Search Terms: CPC & Performance Variance")
                 st.markdown("Spot where you pay too much for the same keyword across different campaigns.")
                 
-                # Get Top Terms by Spend
                 top_terms = df_agg.groupby('Search Term')['Spend'].sum().nlargest(top_n_terms).index.tolist()
                 df_top = df_agg[df_agg['Search Term'].isin(top_terms)].copy()
                 
@@ -261,7 +263,6 @@ if uploaded_file:
                 
                 df_cpc = pd.DataFrame(cpc_results)
                 
-                # Manual Highlighting without Matplotlib
                 def highlight_high_cpc(row):
                     if 'Lower Bid' in row['Rec']:
                         return ['color: red; font-weight: bold'] * len(row)
@@ -273,33 +274,48 @@ if uploaded_file:
                 )
 
             # ---------------------------
-            # TAB 4: BEST DAYS (NO PLOTLY)
+            # TAB 4: BEST DAYS (SPEND vs ORDERS)
             # ---------------------------
             with tabs[3]:
-                st.subheader("📅 Day of Week Performance")
+                st.subheader("📅 Day Parting: Spend vs. Orders")
                 if col_map['date']:
                     day_agg = df.groupby(df['Date'].dt.day_name()).agg({
                         col_map['spend']: 'sum', col_map['sales']: 'sum', col_map['orders']: 'sum'
                     }).reindex(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
                     
-                    day_agg['ROAS'] = day_agg[col_map['sales']] / day_agg[col_map['spend']]
+                    # Layout: Side by Side Charts
+                    chart_col1, chart_col2 = st.columns(2)
                     
-                    # USE STREAMLIT NATIVE CHART
-                    st.bar_chart(day_agg['ROAS'])
-                    st.caption("Bar chart showing ROAS by day of the week.")
+                    with chart_col1:
+                        st.markdown("##### 📉 Spend Trend")
+                        st.bar_chart(day_agg[col_map['spend']], color="#ff4b4b") # Red for Spend
+                        
+                    with chart_col2:
+                        st.markdown("##### 📦 Order Volume Trend")
+                        st.bar_chart(day_agg[col_map['orders']], color="#00C0F2") # Blue for Orders
+                        
+                    st.dataframe(day_agg.style.format("{:.2f}"))
                 else:
                     st.warning("No 'Date' column found in the report.")
                     day_agg = pd.DataFrame()
 
             # ---------------------------
-            # TAB 5: WASTED SPEND
+            # TAB 5: WASTED SPEND (UPDATED)
             # ---------------------------
             with tabs[4]:
-                st.subheader("High Spend, Zero Sales")
+                st.subheader("💸 Wasted Spend (Zero Orders)")
                 waste_threshold = st.slider("Min Spend Threshold", 50, 1000, 200)
                 
+                # Filter for Waste
                 df_waste = df_agg[(df_agg['Orders'] == 0) & (df_agg['Spend'] >= waste_threshold)].sort_values(by='Spend', ascending=False)
-                st.dataframe(df_waste[['Search Term', 'Campaign', 'Ad Group', 'Spend', 'Clicks', 'CPC']], use_container_width=True)
+                
+                # Added Columns: Orders, ACOS
+                display_cols = ['Search Term', 'Campaign', 'Ad Group', 'Spend', 'Orders', 'ACOS', 'Clicks', 'CPC']
+                
+                st.dataframe(
+                    df_waste[display_cols].style.format({'Spend': '{:.2f}', 'CPC': '{:.2f}', 'ACOS': '{:.2f}%'}), 
+                    use_container_width=True
+                )
 
             # ---------------------------
             # MASTER EXPORT BUTTON
@@ -307,7 +323,6 @@ if uploaded_file:
             st.markdown("---")
             st.markdown("### 📥 Download Everything")
             
-            # Prepare Dictionary for Excel Writer
             export_data = {
                 'Cannibalization': df_cannibal if 'df_cannibal' in locals() else pd.DataFrame(),
                 'Harvesting': df_harvest if 'df_harvest' in locals() else pd.DataFrame(),
@@ -319,11 +334,13 @@ if uploaded_file:
             excel_file = to_excel(export_data)
             
             st.download_button(
-                label="📥 Download Master Report (All Analyses)",
+                label="📥 Download Master Report",
                 data=excel_file,
-                file_name="Amazon_PPC_Master_Analysis.xlsx",
+                file_name="Prabal_Ecommerce_Master_Report.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
             
     except Exception as e:
         st.error(f"Error processing file: {e}")
+else:
+    st.info("Please upload your Search Term Report from the sidebar.")
