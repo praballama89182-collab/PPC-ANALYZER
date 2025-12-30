@@ -83,7 +83,8 @@ def to_excel(dfs):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         for sheet_name, df in dfs.items():
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
+            if not df.empty:
+                df.to_excel(writer, sheet_name=sheet_name[:31], index=False) # Excel limits sheet names to 31 chars
     return output.getvalue()
 
 # --- MAIN LOGIC ---
@@ -225,6 +226,7 @@ if uploaded_file:
                     st.dataframe(df_harvest.sort_values(by='Sales', ascending=False), use_container_width=True)
                 else:
                     st.info("No terms met the strict harvesting criteria.")
+                    df_harvest = pd.DataFrame()
 
             # ---------------------------
             # TAB 3: CPC ANALYZER (Top 50)
